@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{% block title %}Attendance Tracker{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}" />
+</head>
+<body>
+
+<!-- ── Sidebar ─────────────────────────────────────────── -->
+<nav class="sidebar" id="sidebar">
+  <div class="sidebar-header">
+    <span class="sidebar-logo">📋</span>
+    <span class="sidebar-title">AttendanceTracker</span>
+  </div>
+  <ul class="sidebar-nav">
+    <li><a href="/" class="nav-link {% if request.path == '/' %}active{% endif %}">
+      <span class="nav-icon">🏠</span> Dashboard
+    </a></li>
+    <li><a href="/students" class="nav-link {% if request.path == '/students' %}active{% endif %}">
+      <span class="nav-icon">👨‍🎓</span> Students
+    </a></li>
+    <li><a href="/employees" class="nav-link {% if request.path == '/employees' %}active{% endif %}">
+      <span class="nav-icon">👔</span> Employees
+    </a></li>
+    <li><a href="/attendance" class="nav-link {% if request.path == '/attendance' %}active{% endif %}">
+      <span class="nav-icon">✅</span> Attendance
+    </a></li>
+    <li><a href="/reports" class="nav-link {% if request.path == '/reports' %}active{% endif %}">
+      <span class="nav-icon">📊</span> Reports
+    </a></li>
+  </ul>
+</nav>
+
+<!-- ── Main content ──────────────────────────────────────── -->
+<div class="main-wrapper">
+  <!-- Top header -->
+  <header class="top-header">
+    <button class="sidebar-toggle" id="sidebarToggle" aria-label="Toggle sidebar">☰</button>
+    <h1 class="page-title">{% block page_title %}Attendance Tracker{% endblock %}</h1>
+    <div class="header-right">
+      <span id="currentDate"></span>
+    </div>
+  </header>
+
+  <!-- Notifications area -->
+  <div id="notification" class="notification hidden"></div>
+
+  <!-- Page content -->
+  <main class="content">
+    {% block content %}{% endblock %}
+  </main>
+</div>
+
+<!-- ── Modal (shared) ──────────────────────────────────── -->
+<div id="modalOverlay" class="modal-overlay hidden">
+  <div class="modal" id="modal">
+    <div class="modal-header">
+      <h2 id="modalTitle">Modal</h2>
+      <button class="modal-close" id="modalClose">✕</button>
+    </div>
+    <div class="modal-body" id="modalBody"></div>
+  </div>
+</div>
+
+<!-- ── Confirm dialog ──────────────────────────────────── -->
+<div id="confirmOverlay" class="modal-overlay hidden">
+  <div class="modal modal--sm">
+    <div class="modal-header">
+      <h2 id="confirmTitle">Confirm</h2>
+    </div>
+    <div class="modal-body">
+      <p id="confirmMessage"></p>
+      <div class="btn-group mt-1">
+        <button id="confirmYes" class="btn btn--danger">Delete</button>
+        <button id="confirmNo" class="btn btn--outline">Cancel</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="{{ url_for('static', filename='js/app.js') }}"></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

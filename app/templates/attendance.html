@@ -1,0 +1,248 @@
+{% extends "base.html" %}
+{% block title %}Attendance — Attendance Tracker{% endblock %}
+{% block page_title %}Mark Attendance{% endblock %}
+
+{% block content %}
+<section class="section">
+  <!-- Filter bar -->
+  <div class="filter-bar">
+    <div class="form-group">
+      <label>Date</label>
+      <input type="date" id="filterDate" class="input" />
+    </div>
+    <div class="form-group">
+      <label>Student</label>
+      <select id="filterStudent" class="input">
+        <option value="">All Students</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>Status</label>
+      <select id="filterStatus" class="input">
+        <option value="">All Statuses</option>
+        <option value="Present">Present</option>
+        <option value="Absent">Absent</option>
+        <option value="Late">Late</option>
+        <option value="Leave">Leave</option>
+      </select>
+    </div>
+    <button class="btn btn--outline" id="btnFilter">Filter</button>
+    <button class="btn btn--primary" id="btnMarkAttendance">+ Mark Attendance</button>
+  </div>
+
+  <!-- Table -->
+  <div class="table-wrapper">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Date</th>
+          <th>Student ID</th>
+          <th>Name</th>
+          <th>Status</th>
+          <th>Check In</th>
+          <th>Check Out</th>
+          <th>Remarks</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody id="attendanceBody">
+        <tr><td colspan="8" class="text-center text-muted">Loading…</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p id="attendanceCount" class="text-muted mt-sm"></p>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let editingId = null;
+let allStudents = [];
+
+const STATUS_COLORS = {
+  Present: "badge--green",
+  Absent:  "badge--red",
+  Late:    "badge--yellow",
+  Leave:   "badge--blue",
+};
+
+function attendanceForm(data = {}) {
+  const studentOptions = allStudents.map(s =>
+    `<option value="${s.id}" ${data.student_id === s.id ? "selected" : ""}>${s.student_id} — ${esc(s.name)}</option>`
+  ).join("");
+
+  return `
+  <form id="attendanceForm" class="form">
+    <div class="form-row">
+      <div class="form-group">
+        <label>Student *</label>
+        <select name="student_id" class="input" required>
+          <option value="">Select a student…</option>
+          ${studentOptions}
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Date *</label>
+        <input name="date" type="date" class="input" required value="${data.date || todayISO()}" max="${todayISO()}" />
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Status *</label>
+        <select name="status" class="input" required>
+          ${["Present","Absent","Late","Leave"].map(s =>
+            `<option value="${s}" ${data.status === s ? "selected" : ""}>${s}</option>`
+          ).join("")}
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Check In</label>
+        <input name="check_in" type="time" class="input" value="${data.check_in||""}" />
+      </div>
+      <div class="form-group">
+        <label>Check Out</label>
+        <input name="check_out" type="time" class="input" value="${data.check_out||""}" />
+      </div>
+    </div>
+    <div class="form-group">
+      <label>Remarks</label>
+      <input name="remarks" class="input" value="${esc(data.remarks)}" placeholder="Optional notes…" />
+    </div>
+    <div class="btn-group mt-1">
+      <button type="submit" class="btn btn--primary">${editingId ? "Update" : "Mark"} Attendance</button>
+      <button type="button" class="btn btn--outline" id="btnCancelForm">Cancel</button>
+    </div>
+  </form>`;
+}
+
+function todayISO() {
+  return new Date().toISOString().split("T")[0];
+}
+
+function loadAttendance() {
+  const date = document.getElementById("filterDate").value;
+  const sid  = document.getElementById("filterStudent").value;
+  const stat = document.getElementById("filterStatus").value;
+
+  const params = new URLSearchParams();
+  if (date) params.set("date", date);
+  if (sid)  params.set("student_id", sid);
+  if (stat) params.set("status", stat);
+
+  fetch(`/api/attendance?${params}`)
+    .then(r => r.json())
+    .then(res => {
+      const tbody = document.getElementById("attendanceBody");
+      if (!res.success || res.data.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="8" class="text-center text-muted">No attendance records found.</td></tr>`;
+        document.getElementById("attendanceCount").textContent = "";
+        return;
+      }
+      tbody.innerHTML = res.data.map(r => `
+        <tr>
+          <td>${r.date}</td>
+          <td><strong>${esc(r.student_code)}</strong></td>
+          <td>${esc(r.student_name)}</td>
+          <td><span class="badge ${STATUS_COLORS[r.status]||""}">${r.status}</span></td>
+          <td>${r.check_in || "—"}</td>
+          <td>${r.check_out || "—"}</td>
+          <td>${esc(r.remarks||"")}</td>
+          <td class="actions">
+            <button class="btn btn--sm btn--outline" onclick="openEdit(${r.id})">Edit</button>
+            <button class="btn btn--sm btn--danger" onclick="deleteRecord(${r.id})">Delete</button>
+          </td>
+        </tr>`).join("");
+      document.getElementById("attendanceCount").textContent = `Showing ${res.total} record(s)`;
+    });
+}
+
+function openAdd() {
+  editingId = null;
+  openModal("Mark Attendance", attendanceForm({}));
+  setupFormHandler();
+}
+
+function openEdit(id) {
+  fetch(`/api/attendance?student_id=0`)  // we'll get from table row
+    .then(() => {})
+    .catch(() => {});
+
+  // Find record from currently rendered data — simpler to just hit API with a custom approach
+  // We read the attendance record by filtering all records and matching id
+  fetch(`/api/attendance`)
+    .then(r => r.json())
+    .then(res => {
+      const record = (res.data || []).find(r => r.id === id);
+      if (!record) { showNotification("Record not found", "error"); return; }
+      editingId = id;
+      openModal("Edit Attendance", attendanceForm(record));
+      setupFormHandler();
+    });
+}
+
+function setupFormHandler() {
+  document.getElementById("attendanceForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    const payload = Object.fromEntries(fd.entries());
+    payload.student_id = parseInt(payload.student_id, 10);
+
+    // Convert empty time strings to null
+    if (!payload.check_in)  delete payload.check_in;
+    if (!payload.check_out) delete payload.check_out;
+    if (!payload.remarks)   delete payload.remarks;
+
+    // Convert time inputs (HH:MM from <input type="time">) — already in HH:MM
+    const url    = editingId ? `/api/attendance/${editingId}` : "/api/attendance";
+    const method = editingId ? "PUT" : "POST";
+
+    const res = await apiFetch(url, method, payload);
+    if (res.success) {
+      closeModal();
+      showNotification(res.message, "success");
+      loadAttendance();
+    } else {
+      showNotification(res.message || "Error saving attendance", "error");
+    }
+  });
+  document.getElementById("btnCancelForm").addEventListener("click", closeModal);
+}
+
+function deleteRecord(id) {
+  openConfirm("Delete this attendance record?", async () => {
+    const res = await apiFetch(`/api/attendance/${id}`, "DELETE");
+    if (res.success) {
+      showNotification(res.message, "success");
+      loadAttendance();
+    } else {
+      showNotification(res.message, "error");
+    }
+  });
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+  // Set today as default date filter
+  document.getElementById("filterDate").value = todayISO();
+
+  // Load student list for the dropdown
+  fetch("/api/students")
+    .then(r => r.json())
+    .then(res => {
+      if (res.success) {
+        allStudents = res.data;
+        const sel = document.getElementById("filterStudent");
+        res.data.forEach(s => {
+          const opt = document.createElement("option");
+          opt.value = s.id;
+          opt.textContent = `${s.student_id} — ${s.name}`;
+          sel.appendChild(opt);
+        });
+      }
+      loadAttendance();
+    });
+
+  document.getElementById("btnFilter").addEventListener("click", loadAttendance);
+  document.getElementById("btnMarkAttendance").addEventListener("click", openAdd);
+});
+</script>
+{% endblock %}

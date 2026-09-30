@@ -1,0 +1,182 @@
+{% extends "base.html" %}
+{% block title %}Students — Attendance Tracker{% endblock %}
+{% block page_title %}Students{% endblock %}
+
+{% block content %}
+<section class="section">
+  <!-- Toolbar -->
+  <div class="toolbar">
+    <input type="text" id="searchInput" class="input" placeholder="Search by name, ID, department…" />
+    <button class="btn btn--primary" id="btnAddStudent">+ Add Student</button>
+  </div>
+
+  <!-- Table -->
+  <div class="table-wrapper">
+    <table class="table" id="studentsTable">
+      <thead>
+        <tr>
+          <th>Student ID</th>
+          <th>Name</th>
+          <th>Email</th>
+          <th>Department</th>
+          <th>Semester</th>
+          <th>Section</th>
+          <th>Phone</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody id="studentsBody">
+        <tr><td colspan="8" class="text-center text-muted">Loading…</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p id="studentsCount" class="text-muted mt-sm"></p>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// ── Students page logic ──────────────────────────────────
+
+const FIELDS = ["student_id","name","email","department","semester","section","phone"];
+
+let editingId = null;
+
+function studentForm(data = {}) {
+  return `
+  <form id="studentForm" class="form">
+    <div class="form-row">
+      <div class="form-group">
+        <label>Student ID *</label>
+        <input name="student_id" class="input" required value="${esc(data.student_id)}" placeholder="e.g. STU001" />
+      </div>
+      <div class="form-group">
+        <label>Full Name *</label>
+        <input name="name" class="input" required value="${esc(data.name)}" placeholder="Full name" />
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Email *</label>
+        <input name="email" type="email" class="input" required value="${esc(data.email)}" placeholder="email@example.com" />
+      </div>
+      <div class="form-group">
+        <label>Phone</label>
+        <input name="phone" class="input" value="${esc(data.phone)}" placeholder="+1234567890" />
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Department *</label>
+        <input name="department" class="input" required value="${esc(data.department)}" placeholder="e.g. Computer Science" />
+      </div>
+      <div class="form-group">
+        <label>Semester *</label>
+        <input name="semester" type="number" class="input" required min="1" max="12" value="${data.semester||''}" />
+      </div>
+      <div class="form-group">
+        <label>Section *</label>
+        <input name="section" class="input" required value="${esc(data.section)}" placeholder="A" />
+      </div>
+    </div>
+    <div class="btn-group mt-1">
+      <button type="submit" class="btn btn--primary">${editingId ? "Update" : "Create"} Student</button>
+      <button type="button" class="btn btn--outline" id="btnCancelForm">Cancel</button>
+    </div>
+  </form>`;
+}
+
+function loadStudents(search = "") {
+  const url = search ? `/api/students?search=${encodeURIComponent(search)}` : "/api/students";
+  fetch(url)
+    .then(r => r.json())
+    .then(res => {
+      const tbody = document.getElementById("studentsBody");
+      if (!res.success || res.data.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="8" class="text-center text-muted">No students found.</td></tr>`;
+        document.getElementById("studentsCount").textContent = "";
+        return;
+      }
+      tbody.innerHTML = res.data.map(s => `
+        <tr>
+          <td><strong>${esc(s.student_id)}</strong></td>
+          <td>${esc(s.name)}</td>
+          <td>${esc(s.email)}</td>
+          <td>${esc(s.department)}</td>
+          <td>${s.semester}</td>
+          <td>${esc(s.section)}</td>
+          <td>${esc(s.phone||"—")}</td>
+          <td class="actions">
+            <button class="btn btn--sm btn--outline" onclick="openEdit(${s.id})">Edit</button>
+            <button class="btn btn--sm btn--danger" onclick="deleteStudent(${s.id}, '${esc(s.name)}')">Delete</button>
+          </td>
+        </tr>`).join("");
+      document.getElementById("studentsCount").textContent = `Showing ${res.total} student(s)`;
+    });
+}
+
+function openAdd() {
+  editingId = null;
+  openModal("Add Student", studentForm({}));
+  setupFormHandler();
+}
+
+function openEdit(id) {
+  fetch(`/api/students/${id}`)
+    .then(r => r.json())
+    .then(res => {
+      if (!res.success) { showNotification(res.message, "error"); return; }
+      editingId = id;
+      openModal("Edit Student", studentForm(res.data));
+      setupFormHandler();
+    });
+}
+
+function setupFormHandler() {
+  document.getElementById("studentForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    const payload = Object.fromEntries(fd.entries());
+    payload.semester = parseInt(payload.semester, 10);
+
+    const url = editingId ? `/api/students/${editingId}` : "/api/students";
+    const method = editingId ? "PUT" : "POST";
+
+    const res = await apiFetch(url, method, payload);
+    if (res.success) {
+      closeModal();
+      showNotification(res.message, "success");
+      loadStudents();
+    } else {
+      showNotification(res.message || "Error saving student", "error");
+    }
+  });
+  document.getElementById("btnCancelForm").addEventListener("click", closeModal);
+}
+
+function deleteStudent(id, name) {
+  openConfirm(`Delete student "${name}"? This will also remove all their attendance records.`, async () => {
+    const res = await apiFetch(`/api/students/${id}`, "DELETE");
+    if (res.success) {
+      showNotification(res.message, "success");
+      loadStudents();
+    } else {
+      showNotification(res.message, "error");
+    }
+  });
+}
+
+// ── Initialise ──────────────────────────────────────────
+document.addEventListener("DOMContentLoaded", () => {
+  loadStudents();
+
+  document.getElementById("btnAddStudent").addEventListener("click", openAdd);
+
+  let debounce;
+  document.getElementById("searchInput").addEventListener("input", (e) => {
+    clearTimeout(debounce);
+    debounce = setTimeout(() => loadStudents(e.target.value.trim()), 300);
+  });
+});
+</script>
+{% endblock %}

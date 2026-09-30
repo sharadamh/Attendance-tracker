@@ -1,0 +1,224 @@
+{% extends "base.html" %}
+{% block title %}Reports — Attendance Tracker{% endblock %}
+{% block page_title %}Reports{% endblock %}
+
+{% block content %}
+<section class="section">
+
+  <!-- Filter panel -->
+  <div class="filter-bar filter-bar--wrap">
+    <div class="form-group">
+      <label>Date From</label>
+      <input type="date" id="rpDateFrom" class="input" />
+    </div>
+    <div class="form-group">
+      <label>Date To</label>
+      <input type="date" id="rpDateTo" class="input" />
+    </div>
+    <div class="form-group">
+      <label>Department</label>
+      <input type="text" id="rpDept" class="input" placeholder="e.g. Computer Science" />
+    </div>
+    <div class="form-group">
+      <label>Status</label>
+      <select id="rpStatus" class="input">
+        <option value="">All</option>
+        <option value="Present">Present</option>
+        <option value="Absent">Absent</option>
+        <option value="Late">Late</option>
+        <option value="Leave">Leave</option>
+      </select>
+    </div>
+    <button class="btn btn--primary" id="btnRunReport">Run Report</button>
+    <button class="btn btn--outline" id="btnExportCSV">Export CSV</button>
+    <button class="btn btn--outline" id="btnPrint">Print</button>
+  </div>
+
+  <!-- Summary cards (filled after report runs) -->
+  <div id="reportSummary" class="cards-grid cards-grid--sm hidden">
+    <div class="card card--blue">
+      <div class="card-label">Total Records</div>
+      <div class="card-value" id="rTotal">0</div>
+    </div>
+    <div class="card card--green">
+      <div class="card-label">Present</div>
+      <div class="card-value" id="rPresent">0</div>
+    </div>
+    <div class="card card--red">
+      <div class="card-label">Absent</div>
+      <div class="card-value" id="rAbsent">0</div>
+    </div>
+    <div class="card card--yellow">
+      <div class="card-label">Late</div>
+      <div class="card-value" id="rLate">0</div>
+    </div>
+    <div class="card card--purple">
+      <div class="card-label">Leave</div>
+      <div class="card-value" id="rLeave">0</div>
+    </div>
+  </div>
+
+  <!-- Detailed attendance table -->
+  <div id="detailSection">
+    <h3 class="section-subtitle">Attendance Records</h3>
+    <div class="table-wrapper" id="detailTableWrapper">
+      <table class="table" id="reportDetailTable">
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>Student ID</th>
+            <th>Name</th>
+            <th>Department</th>
+            <th>Status</th>
+            <th>Check In</th>
+            <th>Check Out</th>
+            <th>Remarks</th>
+          </tr>
+        </thead>
+        <tbody id="reportDetailBody">
+          <tr><td colspan="8" class="text-center text-muted">Run a report to see results.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Summary by student table -->
+  <div id="summarySection" class="mt-1">
+    <h3 class="section-subtitle">Student Summary</h3>
+    <div class="table-wrapper">
+      <table class="table" id="reportSummaryTable">
+        <thead>
+          <tr>
+            <th>Student ID</th>
+            <th>Name</th>
+            <th>Department</th>
+            <th>Total</th>
+            <th>Present</th>
+            <th>Absent</th>
+            <th>Late</th>
+            <th>Leave</th>
+            <th>Attendance %</th>
+          </tr>
+        </thead>
+        <tbody id="summaryBody">
+          <tr><td colspan="9" class="text-center text-muted">Run a report to see summary.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const STATUS_COLORS = {
+  Present: "badge--green",
+  Absent:  "badge--red",
+  Late:    "badge--yellow",
+  Leave:   "badge--blue",
+};
+
+function buildParams() {
+  const p = new URLSearchParams();
+  const df = document.getElementById("rpDateFrom").value;
+  const dt = document.getElementById("rpDateTo").value;
+  const dept = document.getElementById("rpDept").value.trim();
+  const stat = document.getElementById("rpStatus").value;
+  if (df)   p.set("date_from", df);
+  if (dt)   p.set("date_to", dt);
+  if (dept) p.set("department", dept);
+  if (stat) p.set("status", stat);
+  return p;
+}
+
+function runReport() {
+  const params = buildParams();
+
+  // Detail report
+  fetch(`/api/reports/attendance?${params}`)
+    .then(r => r.json())
+    .then(res => {
+      if (!res.success) { showNotification(res.message, "error"); return; }
+
+      const data = res.data;
+      const tbody = document.getElementById("reportDetailBody");
+
+      if (data.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="8" class="text-center text-muted">No records match the selected filters.</td></tr>`;
+        document.getElementById("reportSummary").classList.add("hidden");
+        return;
+      }
+
+      // Count totals
+      const counts = { Present: 0, Absent: 0, Late: 0, Leave: 0 };
+      data.forEach(r => counts[r.status] = (counts[r.status] || 0) + 1);
+
+      document.getElementById("rTotal").textContent = data.length;
+      document.getElementById("rPresent").textContent = counts.Present;
+      document.getElementById("rAbsent").textContent = counts.Absent;
+      document.getElementById("rLate").textContent = counts.Late;
+      document.getElementById("rLeave").textContent = counts.Leave;
+      document.getElementById("reportSummary").classList.remove("hidden");
+
+      tbody.innerHTML = data.map(r => `
+        <tr>
+          <td>${r.date}</td>
+          <td><strong>${esc(r.student_id)}</strong></td>
+          <td>${esc(r.student_name)}</td>
+          <td>${esc(r.department)}</td>
+          <td><span class="badge ${STATUS_COLORS[r.status]||""}">${r.status}</span></td>
+          <td>${r.check_in || "—"}</td>
+          <td>${r.check_out || "—"}</td>
+          <td>${esc(r.remarks||"")}</td>
+        </tr>`).join("");
+    });
+
+  // Summary report — uses same date + dept params but no status filter
+  const summaryParams = new URLSearchParams(params);
+  summaryParams.delete("status");
+
+  fetch(`/api/reports/summary?${summaryParams}`)
+    .then(r => r.json())
+    .then(res => {
+      if (!res.success) return;
+      const tbody = document.getElementById("summaryBody");
+      if (res.data.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="9" class="text-center text-muted">No data.</td></tr>`;
+        return;
+      }
+      tbody.innerHTML = res.data.map(s => {
+        const pct = s.attendance_percentage;
+        const color = pct >= 75 ? "#16a34a" : pct >= 50 ? "#d97706" : "#dc2626";
+        return `
+        <tr>
+          <td><strong>${esc(s.student_id)}</strong></td>
+          <td>${esc(s.name)}</td>
+          <td>${esc(s.department)}</td>
+          <td>${s.total}</td>
+          <td>${s.present}</td>
+          <td>${s.absent}</td>
+          <td>${s.late}</td>
+          <td>${s.leave}</td>
+          <td><strong style="color:${color}">${pct}%</strong></td>
+        </tr>`;
+      }).join("");
+    });
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+  document.getElementById("btnRunReport").addEventListener("click", runReport);
+
+  document.getElementById("btnExportCSV").addEventListener("click", () => {
+    const params = buildParams();
+    params.set("format", "csv");
+    window.location.href = `/api/reports/attendance?${params}`;
+  });
+
+  document.getElementById("btnPrint").addEventListener("click", () => window.print());
+
+  // Run an initial report on page load with no filters
+  runReport();
+});
+</script>
+{% endblock %}

@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — Attendance Tracker{% endblock %}
+{% block page_title %}Dashboard{% endblock %}
+
+{% block content %}
+<!-- ── Stats cards ────────────────────────────────────── -->
+<section class="cards-grid" id="dashboardCards">
+  <div class="card card--blue">
+    <div class="card-label">Total Students</div>
+    <div class="card-value" id="statStudents">—</div>
+  </div>
+  <div class="card card--green">
+    <div class="card-label">Total Employees</div>
+    <div class="card-value" id="statEmployees">—</div>
+  </div>
+  <div class="card card--teal">
+    <div class="card-label">Present Today</div>
+    <div class="card-value" id="statPresent">—</div>
+  </div>
+  <div class="card card--red">
+    <div class="card-label">Absent Today</div>
+    <div class="card-value" id="statAbsent">—</div>
+  </div>
+  <div class="card card--purple">
+    <div class="card-label">Attendance %</div>
+    <div class="card-value" id="statPct">—</div>
+  </div>
+</section>
+
+<!-- ── Quick links ───────────────────────────────────── -->
+<section class="section">
+  <h2 class="section-title">Quick Links</h2>
+  <div class="quick-links">
+    <a href="/students" class="quick-card">
+      <span class="quick-icon">👨‍🎓</span>
+      <span>Students</span>
+    </a>
+    <a href="/employees" class="quick-card">
+      <span class="quick-icon">👔</span>
+      <span>Employees</span>
+    </a>
+    <a href="/attendance" class="quick-card">
+      <span class="quick-icon">✅</span>
+      <span>Mark Attendance</span>
+    </a>
+    <a href="/reports" class="quick-card">
+      <span class="quick-icon">📊</span>
+      <span>Reports</span>
+    </a>
+  </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  // Load dashboard stats on page load
+  document.addEventListener("DOMContentLoaded", () => {
+    fetch("/api/reports/dashboard")
+      .then(r => r.json())
+      .then(res => {
+        if (res.success) {
+          const d = res.data;
+          document.getElementById("statStudents").textContent = d.total_students;
+          document.getElementById("statEmployees").textContent = d.total_employees;
+          document.getElementById("statPresent").textContent = d.present_today;
+          document.getElementById("statAbsent").textContent = d.absent_today;
+          document.getElementById("statPct").textContent = d.attendance_percentage + "%";
+        }
+      })
+      .catch(() => {});
+  });
+</script>
+{% endblock %}
